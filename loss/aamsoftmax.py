@@ -17,7 +17,7 @@ class LossFunction(nn.Module):
         self.m = margin
         self.s = scale
         self.in_feats = nOut
-        self.weight = torch.nn.Parameter(torch.FloatTensor(nClasses, nOut), requires_grad=True)
+        self.weight = torch.nn.Parameter(torch.cuda.FloatTensor(nClasses, nOut), requires_grad=True)
         self.ce = nn.CrossEntropyLoss()
         nn.init.xavier_normal_(self.weight, gain=1)
 
@@ -33,10 +33,12 @@ class LossFunction(nn.Module):
 
     def forward(self, x, label=None):
 
-        assert x.size()[0] == label.size()[0]
-        assert x.size()[1] == self.in_feats
+        #assert x.size()[0] == label.size()[0]
+        #assert x.size()[1] == self.in_feats
         
         # cos(theta)
+        #print(f"AAM: {x.shape}")
+        #print(f"AAM: {F.normalize(x).shape}")
         cosine = F.linear(F.normalize(x), F.normalize(self.weight))
         # cos(theta + m)
         sine = torch.sqrt((1.0 - torch.mul(cosine, cosine)).clamp(0, 1))
@@ -49,6 +51,8 @@ class LossFunction(nn.Module):
 
         #one_hot = torch.zeros(cosine.size(), device='cuda' if torch.cuda.is_available() else 'cpu')
         one_hot = torch.zeros_like(cosine)
+        #print(one_hot.shape, label.shape)
+        #print(label.view(-1, 1).shape)
         one_hot.scatter_(1, label.view(-1, 1), 1)
         output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
         output = output * self.s
