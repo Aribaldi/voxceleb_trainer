@@ -11,6 +11,7 @@ import itertools
 import random
 import torch.nn.functional as F
 import numpy as np
+from torch.cuda.amp import autocast, GradScaler
 
 def evaluateFromList(test_list, test_path, model, nDataLoaderThread, print_interval=100, num_eval=10, eval_frames=300):
 
@@ -127,9 +128,9 @@ class HuCapaTrainer(nn.Module):
             )
         self.test_file = "./data/test_list.txt"
         self.test_path = "./data/voxceleb1/"
-        self.optim = torch.optim.Adam([p for p in self.model.parameters() if p.requires_grad], lr=lr, weight_decay=2e-5)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=test_step, gamma=lr_decay)
         self.loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
+        self.optim = torch.optim.Adam([p for p in itertools.chain(self.model.parameters(), self.loss.parameters()) if p.requires_grad], lr=lr, weight_decay=2e-5)
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=test_step, gamma=lr_decay)
         print(time.strftime("%m-%d %H:%M:%S") + " Overall parameters: = %.2f"%(sum(param.numel() for param in self.model.parameters())))
         print(f"Learnable parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
 
@@ -138,6 +139,7 @@ class HuCapaTrainer(nn.Module):
         self.model.ecapa.load_state_dict(checkpoint["ecapa"])
         self.model.hs_weights.load_state_dict(checkpoint["hs_weights"])
         self.optim.load_state_dict(checkpoint["opt"])
+        self.loss.load_state_dict(checkpoint["loss"])
         return checkpoint["epoch"]
 
     def train(self, epoch):

@@ -23,16 +23,18 @@ def main(args):
     if args.cpt_path:
         start_epoch = trainer.load_params(args.cpt_path)
     start_epoch +=1
-    save_path = Path(f"exps/HuCapa/new_hs_weights/{start_epoch}-{start_epoch + args.epochs_num - 1}")
+    save_path = Path(f"exps/HuCapa/sampler_loss_fix_full/{start_epoch}-{start_epoch + args.epochs_num - 1}")
     os.makedirs(save_path, exist_ok=True)
     writer = SummaryWriter(log_dir=save_path / "tb_logs")
     scorefile = open(save_path / "scores.txt", "a+")
     for epoch in range(start_epoch, start_epoch + args.epochs_num):
+        trainer.dataloader.sampler.set_epoch(epoch)
         loss, lr, acc = trainer.train(epoch)
         writer.add_scalar("Train loss", loss, epoch)
         writer.add_scalar("Train acc/eer", acc, epoch)
         writer.add_scalar("LR", lr, epoch)
         print(f"hidden states weights: {trainer.model.hs_weights.weight}")
+        print(f"hidden states weights: {trainer.loss.weight}")
         scorefile.write("Epoch {:d}, TEER/TAcc {:2.2f}, TLOSS {:f}, LR {:f} \n".format(epoch, acc.item(), loss, lr))
 
         if epoch % args.test_every == 0:
@@ -44,7 +46,8 @@ def main(args):
                 "ecapa": trainer.model.ecapa.state_dict(),
                 "hs_weights": trainer.model.hs_weights.state_dict(),
                 "opt": trainer.optim.state_dict(),
-                "epoch": epoch 
+                "epoch": epoch,
+                "loss": trainer.loss.state_dict()
             }, save_path / f"{start_epoch}-{start_epoch + args.epochs_num - 1}_cp.tar")
             scorefile.flush()
     scorefile.close()
