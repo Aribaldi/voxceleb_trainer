@@ -17,7 +17,7 @@ class HuCapa(nn.Module):
         nn.init.ones_(self.hs_weights.weight)
 
 
-        self.ecapa = ECAPA_TDNN.ECAPA_TDNN(768)
+        self.ecapa = ECAPA_TDNN.ECAPA_TDNN(768, channels=[1024, 1024, 1024, 1024, 3072])
         self.ecapa.to(device)
 
     def forward(self, x):

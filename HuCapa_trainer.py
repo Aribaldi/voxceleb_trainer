@@ -96,6 +96,7 @@ class HuCapaTrainer(nn.Module):
         seed:int=10,
         lr:float=1e-3,
         test_step:int=1,
+        scheduler_type = "step",
         lr_decay:float=0.97
     ) -> None:
         super().__init__()
@@ -103,9 +104,9 @@ class HuCapaTrainer(nn.Module):
         self.model = HuCapa(self.device)
         train_dataset = train_dataset_loader(
             train_list="data/train_list.txt",
-            augment=False,
-            musan_path="",
-            rir_path="",
+            augment=True,
+            musan_path="./data/musan_split",
+            rir_path="./data/RIRS_NOISES/simulated_rirs",
             max_frames=max_frames,
             train_path="data/voxceleb2"
             )
@@ -130,7 +131,11 @@ class HuCapaTrainer(nn.Module):
         self.test_path = "./data/voxceleb1/"
         self.loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
         self.optim = torch.optim.Adam([p for p in itertools.chain(self.model.parameters(), self.loss.parameters()) if p.requires_grad], lr=lr, weight_decay=2e-5)
-        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=test_step, gamma=lr_decay)
+        if scheduler_type == "step":
+            self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=test_step, gamma=lr_decay)
+        elif scheduler_type == "cycle":
+            self.scheduler = torch.optim.lr_scheduler.CyclicLR(self.optim, base_lr=1e-8, max_lr=1e-6, step_size_up=10918, mode="triangular2", cycle_momentum=False)
+        self.scaler = GradScaler()
         print(time.strftime("%m-%d %H:%M:%S") + " Overall parameters: = %.2f"%(sum(param.numel() for param in self.model.parameters())))
         print(f"Learnable parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
 
@@ -140,6 +145,8 @@ class HuCapaTrainer(nn.Module):
         self.model.hs_weights.load_state_dict(checkpoint["hs_weights"])
         self.optim.load_state_dict(checkpoint["opt"])
         self.loss.load_state_dict(checkpoint["loss"])
+        if "scaler" in checkpoint:
+            self.scaler.load_state_dict(checkpoint["scaler"])
         return checkpoint["epoch"]
 
     def train(self, epoch):
@@ -151,11 +158,14 @@ class HuCapaTrainer(nn.Module):
             data = data.to(self.device)
             data = data.squeeze(1)
             labels = torch.tensor(labels, dtype=torch.long, device=self.device)
-            out = self.model(data)
-            out = out.squeeze(1)
-            nloss, prec = self.loss(out, labels)
-            nloss.backward()
-            self.optim.step()
+            with autocast():
+                out = self.model(data)
+                out = out.squeeze(1)
+                nloss, prec = self.loss(out, labels)
+            self.scaler.scale(nloss).backward()
+            self.scaler.step(self.optim)
+            self.scaler.update()
+            #self.optim.step()
             index += len(labels)
             top1 += prec
             loss += nloss.detach().cpu().numpy()
@@ -163,7 +173,7 @@ class HuCapaTrainer(nn.Module):
             " [%2d] Lr: %5f, Training: %.2f%%, "    %(epoch, lr, 100 * (num / self.dataloader.__len__())) + \
             " Loss: %.5f, ACC: %2.2f%% \r"        %(loss/(num), top1/index*len(labels)))
             sys.stderr.flush()
-        self.scheduler.step()
+            self.scheduler.step()
         sys.stdout.write("\n")
         return loss / num, lr, top1 / index*len(labels)
 
