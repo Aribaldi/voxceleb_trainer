@@ -16,22 +16,18 @@ parser.add_argument("--test_every", type=int, default=1)
 parser.add_argument("--batch_size", type=int, default=128)
 parser.add_argument("--cpt_path", nargs="?", type=str, default="", const=f"{latest_exp}/{latest_exp.stem}_cp.tar")
 parser.add_argument("--sched_type", nargs="?", type=str, default="step")
+parser.add_argument("--unfr_hubert", action="store_true")
 
 
 def main(args):
     start_epoch = 0
-    trainer = HuCapaTrainer(batch_size=args.batch_size, test_step=args.test_every, scheduler_type=args.sched_type)
+    trainer = HuCapaTrainer(batch_size=args.batch_size, test_step=args.test_every, scheduler_type=args.sched_type, unfreeze_hubert=args.unfr_hubert)
     if args.cpt_path:
         start_epoch = trainer.load_params(args.cpt_path)
     start_epoch +=1
-    save_path = Path(f"exps/HuCapa/cyclic_sched_2/{start_epoch}-{start_epoch + args.epochs_num - 1}")
+    save_path = Path(f"exps/HuCapa/longer_crops/{start_epoch}-{start_epoch + args.epochs_num - 1}")
     os.makedirs(save_path, exist_ok=True)
     writer = SummaryWriter(log_dir=save_path.parent / "tb_logs")
-    #data, _ = next(iter(trainer.dataloader))
-    #data = data.squeeze(1)
-    #data = data.to(trainer.device)
-    #writer.add_graph(trainer.model, data)
-    #writer.close()
     scorefile = open(save_path.parent / "scores.txt", "a+")
     for epoch in range(start_epoch, start_epoch + args.epochs_num):
         trainer.dataloader.sampler.set_epoch(epoch)

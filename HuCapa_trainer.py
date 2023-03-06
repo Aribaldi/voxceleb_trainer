@@ -97,7 +97,9 @@ class HuCapaTrainer(nn.Module):
         lr:float=1e-3,
         test_step:int=1,
         scheduler_type = "step",
-        lr_decay:float=0.97
+        unfreeze_hubert = False,
+        lr_decay:float = 0.97,
+        loss_classes = 5994
     ) -> None:
         super().__init__()
         self.device = device
@@ -108,7 +110,7 @@ class HuCapaTrainer(nn.Module):
             musan_path="./data/musan_split",
             rir_path="./data/RIRS_NOISES/simulated_rirs",
             max_frames=max_frames,
-            train_path="data/voxceleb2"
+            train_path="data/voxceleb2",
             )
         train_sampler = train_dataset_sampler(
             train_dataset,
@@ -129,22 +131,30 @@ class HuCapaTrainer(nn.Module):
             )
         self.test_file = "./data/test_list.txt"
         self.test_path = "./data/voxceleb1/"
-        self.loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
+        self.loss_classes = loss_classes
+        self.loss = AAM(nOut=192, nClasses=loss_classes, margin=0.2, scale=30)
         self.optim = torch.optim.Adam([p for p in itertools.chain(self.model.parameters(), self.loss.parameters()) if p.requires_grad], lr=lr, weight_decay=2e-5)
         if scheduler_type == "step":
             self.scheduler = torch.optim.lr_scheduler.StepLR(self.optim, step_size=test_step, gamma=lr_decay)
         elif scheduler_type == "cycle":
-            self.scheduler = torch.optim.lr_scheduler.CyclicLR(self.optim, base_lr=1e-8, max_lr=1e-6, step_size_up=10918, mode="triangular2", cycle_momentum=False)
+            self.scheduler = torch.optim.lr_scheduler.CyclicLR(self.optim, base_lr=1e-8, max_lr=1e-6, step_size_up=2729, mode="triangular2", cycle_momentum=False)
         self.scaler = GradScaler()
+
+        if unfreeze_hubert:
+            for layer in [0, 1, 3, -2]:
+                self.model.hubert.encoder.layers[layer].requires_grad_(True)
+
         print(time.strftime("%m-%d %H:%M:%S") + " Overall parameters: = %.2f"%(sum(param.numel() for param in self.model.parameters())))
         print(f"Learnable parameters: {sum(p.numel() for p in self.model.parameters() if p.requires_grad)}")
+        print(f"Sched type: {self.scheduler.__class__.__name__}")
 
     def load_params(self, path):
         checkpoint = torch.load(path)
         self.model.ecapa.load_state_dict(checkpoint["ecapa"])
         self.model.hs_weights.load_state_dict(checkpoint["hs_weights"])
         self.optim.load_state_dict(checkpoint["opt"])
-        self.loss.load_state_dict(checkpoint["loss"])
+        if self.loss_classes == 5994:
+            self.loss.load_state_dict(checkpoint["loss"])
         if "scaler" in checkpoint:
             self.scaler.load_state_dict(checkpoint["scaler"])
         return checkpoint["epoch"]
@@ -165,7 +175,6 @@ class HuCapaTrainer(nn.Module):
             self.scaler.scale(nloss).backward()
             self.scaler.step(self.optim)
             self.scaler.update()
-            #self.optim.step()
             index += len(labels)
             top1 += prec
             loss += nloss.detach().cpu().numpy()
@@ -173,6 +182,9 @@ class HuCapaTrainer(nn.Module):
             " [%2d] Lr: %5f, Training: %.2f%%, "    %(epoch, lr, 100 * (num / self.dataloader.__len__())) + \
             " Loss: %.5f, ACC: %2.2f%% \r"        %(loss/(num), top1/index*len(labels)))
             sys.stderr.flush()
+            if self.scheduler.__class__.__name__ != "StepLR":
+                self.scheduler.step()
+        if self.scheduler.__class__.__name__ == "StepLR":
             self.scheduler.step()
         sys.stdout.write("\n")
         return loss / num, lr, top1 / index*len(labels)
