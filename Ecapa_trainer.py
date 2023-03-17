@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from models.SbEcapa import CustomEcapa
+from models.CustomEcapa import ECAPA_TDNN
 from DatasetLoader import train_dataset_loader, train_dataset_sampler, worker_init_fn
 from torch.utils.data import DataLoader
 from loss.aamsoftmax import LossFunction as AAM
@@ -23,19 +24,23 @@ class EcapaTrainer(nn.Module):
         test_step:int=1,
         scheduler_type = "step",
         lr_decay:float = 0.97,
-        loss_classes = 5994
+        loss_classes:int = 5994,
+        train_list:str = "data/train_list_debug.txt",
+        train_path:str = "data/voxceleb2" ,
+        test_path:str = "./data/voxceleb1/",
+        test_file:str = "./data/test_list.txt" 
     ) -> None:
         super().__init__()
         self.device = device
         self.model = CustomEcapa(80)
         self.model.to(device)
         train_dataset = train_dataset_loader(
-            train_list="data/train_list.txt",
-            augment=False,
+            train_list=train_list,
+            augment=True,
             musan_path="./data/musan_split",
             rir_path="./data/RIRS_NOISES/simulated_rirs",
             max_frames=max_frames,
-            train_path="data/voxceleb2",
+            train_path=train_path
             )
         train_sampler = train_dataset_sampler(
             train_dataset,
@@ -54,8 +59,8 @@ class EcapaTrainer(nn.Module):
             worker_init_fn=worker_init_fn,
             drop_last=True
             )
-        self.test_file = "./data/test_list.txt"
-        self.test_path = "./data/voxceleb1/"
+        self.test_file = test_file
+        self.test_path = test_path
         self.loss_classes = loss_classes
         self.loss = AAM(nOut=192, nClasses=loss_classes, margin=0.2, scale=30)
         self.loss.to(device)
