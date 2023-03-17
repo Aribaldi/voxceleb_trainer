@@ -29,4 +29,21 @@ class HuCapa(nn.Module):
         linear_comb_hs = linear_comb_hs.squeeze(3)
         linear_comb_hs = linear_comb_hs.transpose(2, 1)
         ecapa_embs = self.ecapa(linear_comb_hs)
-        return ecapa_embs
+        return ecapa_embs.squeeze(1)
+
+
+if __name__ == "__main__":
+    import glob
+    import numpy as np
+    from DatasetLoader import loadWAV
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    wavs_list = glob.glob("./data/voxceleb2/*/*/*.wav")
+    test = [np.random.choice(wavs_list) for t in range(4)]
+    waveforms = [loadWAV(t, 200, False) for t in test]
+    print(waveforms[0].shape)
+    tensor = torch.tensor(waveforms, dtype=torch.float, device=device).squeeze(1)
+    print(tensor.shape)
+    model = HuCapa(device)
+    model.to(device)
+    out = model(tensor)
+    print(out.shape)

@@ -47,7 +47,7 @@ class CustomEcapa(ECAPA_TDNN):
         x = self.fc(x)
 
         x = x.transpose(1, 2)
-        return x
+        return x.squeeze(1)
 
 
 if __name__ == "__main__":
