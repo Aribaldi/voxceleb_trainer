@@ -57,6 +57,7 @@ class LossFunction(nn.Module):
         output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
         output = output * self.s
 
-        loss    = self.ce(output, label)
-        prec1   = accuracy(output.detach(), label.detach(), topk=(1,))[0]
-        return loss, prec1
+        #loss    = self.ce(output, label)
+        #prec1   = accuracy(output.detach(), label.detach(), topk=(1,))[0]
+        #return loss, prec1
+        return output

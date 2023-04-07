@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import glob
 import numpy as np
 from DatasetLoader import loadWAV
+from loss.aamsoftmax import LossFunction
 
 
 class SEModule(nn.Module):
@@ -118,9 +119,10 @@ class ECAPA_TDNN(nn.Module):
         self.bn5 = nn.BatchNorm1d(3072)
         self.fc6 = nn.Linear(3072, 192)
         self.bn6 = nn.BatchNorm1d(192)
+        self.loss = LossFunction(nOut=192, nClasses=5994, margin=0.2, scale=30)
 
 
-    def forward(self, x):
+    def forward(self, x, label, mode):
         with torch.no_grad():
             with torch.cuda.amp.autocast(enabled=False):
                 x = self.torchfbank(x)+1e-6
@@ -151,8 +153,10 @@ class ECAPA_TDNN(nn.Module):
         x = self.bn5(x)
         x = self.fc6(x)
         x = self.bn6(x)
-
-        return x
+        if mode == "train":
+            return self.loss(x, label)
+        else:
+            return x
 
 
 if __name__ == "__main__":
@@ -165,5 +169,5 @@ if __name__ == "__main__":
     print(tensor.shape)
     model = ECAPA_TDNN(512)
     model.to(device)
-    out = model(tensor)
+    out = model(tensor, torch.ones(4, dtype=torch.long, device=device))
     print(out.shape)

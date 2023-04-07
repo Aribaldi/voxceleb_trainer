@@ -15,6 +15,7 @@ from HuCapa_trainer import evaluateFromList
 from tuneThreshold import *
 from torch.cuda.amp import autocast, GradScaler
 from pathlib import Path
+import torch.nn as nn
 
 
 save_path = Path("./exps/distill_test/")
@@ -55,7 +56,7 @@ def train(num_epochs = 20, batch_size = 256, max_frames = 200):
         drop_last=True
     )
 
-    distillation_criterion = KnowledgeDistillationLossConfig(loss_types=["CE", "MSE"], loss_weights=[0.5, 0.5])
+    distillation_criterion = KnowledgeDistillationLossConfig(loss_types=["CE", "CE"], loss_weights=[0, 1], temperature=1)
     conf = DistillationConfig(teacher_model=teacher, criterion=distillation_criterion, optimizer={"SGD": {"learning_rate": 0.0001}})
     compression_manager = prepare_compression(student, conf)
     compression_manager.callbacks.on_train_begin()
@@ -64,15 +65,16 @@ def train(num_epochs = 20, batch_size = 256, max_frames = 200):
 
     optim = torch.optim.Adam(model.model.parameters(), lr=1e-3, weight_decay=2e-5)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.97)
-    loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
+    loss = nn.CrossEntropyLoss()
+    #loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
     loss.to(device)
     scaler = GradScaler()
 
     scorefile = open(save_path/ "scores.txt", "a+")
 
-    def eval(model):
+    def eval(model, mode):
         model.eval()
-        sc, lab, _ = evaluateFromList("./data/test_list.txt", "./data/voxceleb1/", model, 16)
+        sc, lab, _ = evaluateFromList("./data/test_list.txt", "./data/voxceleb1/", model, 16, mode)
         result = tuneThresholdfromScore(sc, lab, [1, 0.1])
         fnrs, fprs, thresholds = ComputeErrorRates(sc, lab)
         mindcf, _ = ComputeMinDcf(fnrs, fprs, thresholds, p_target=0.05, c_miss=1, c_fa=1)
@@ -89,13 +91,10 @@ def train(num_epochs = 20, batch_size = 256, max_frames = 200):
             data = data.squeeze(1)
             labels = torch.tensor(labels, dtype=torch.long, device=device)
             with autocast():  
-                out = model(data)
-                print(out.shape)
+                out = model(data, labels, "train")
                 out = out.squeeze(1)
-                print(out.shape)
-                print("#"*128)
-                nloss, prec = loss(out, labels)
-                nloss = compression_manager.callbacks.on_after_compute_loss(data, out, nloss)
+                nloss = loss(out, labels)
+                nloss = compression_manager.callbacks.on_after_compute_loss([data, labels, "train"], out, nloss)
             scaler.scale(nloss).backward()
             scaler.step(optim)
             scaler.update()
@@ -104,7 +103,7 @@ def train(num_epochs = 20, batch_size = 256, max_frames = 200):
             " Loss: %.5f \r"        %(g_loss/num))
             sys.stderr.flush()
         if epoch % 2 == 0:
-            val_eer, dcf = eval(model)
+            val_eer, dcf = eval(model,  "eval")
             torch.save({
                 "ecapa": model.state_dict(),
                 "opt": optim.state_dict(),

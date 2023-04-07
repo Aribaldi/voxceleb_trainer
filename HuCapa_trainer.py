@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import numpy as np
 from torch.cuda.amp import autocast, GradScaler
 
-def evaluateFromList(test_list, test_path, model, nDataLoaderThread, print_interval=100, num_eval=10, eval_frames=300):
+def evaluateFromList(test_list, test_path, model, nDataLoaderThread, mode, print_interval=100, num_eval=10, eval_frames=300):
 
         lines = []
         files = []
@@ -38,7 +38,7 @@ def evaluateFromList(test_list, test_path, model, nDataLoaderThread, print_inter
         for idx, data in enumerate(test_loader):
             inp1 = data[0][0].cuda()
             with torch.no_grad():
-                ref_feat = model(inp1).detach().cpu()
+                ref_feat = model(inp1, None, mode).detach().cpu()
             feats[data[1][0]] = ref_feat
             telapsed = time.time() - tstart
 

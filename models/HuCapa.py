@@ -2,7 +2,7 @@ from transformers import HubertModel, HubertConfig
 import torch
 from speechbrain.lobes.models import ECAPA_TDNN
 from torch import nn
-
+from loss.aamsoftmax import LossFunction
 
 class HuCapa(nn.Module):
     def __init__(self, device) -> None:
@@ -20,7 +20,11 @@ class HuCapa(nn.Module):
         self.ecapa = ECAPA_TDNN.ECAPA_TDNN(768, channels=[1024, 1024, 1024, 1024, 3072])
         self.ecapa.to(device)
 
-    def forward(self, x):
+        self.loss = LossFunction(nOut=192, nClasses=5994, margin=0.2, scale=30)
+        self.loss.to(device)
+
+
+    def forward(self, x, label, mode):
         backbone_embs = self.hubert(x).hidden_states
         backbone_embs = torch.stack(backbone_embs).squeeze(1)
         backbone_embs = torch.transpose(backbone_embs, 0, 1)
@@ -29,7 +33,10 @@ class HuCapa(nn.Module):
         linear_comb_hs = linear_comb_hs.squeeze(3)
         linear_comb_hs = linear_comb_hs.transpose(2, 1)
         ecapa_embs = self.ecapa(linear_comb_hs)
-        return ecapa_embs.squeeze(1)
+        if mode=="train":
+            return self.loss(ecapa_embs.squeeze(1), label)
+        else:
+            return ecapa_embs.squeeze(1)
 
 
 if __name__ == "__main__":
@@ -45,5 +52,5 @@ if __name__ == "__main__":
     print(tensor.shape)
     model = HuCapa(device)
     model.to(device)
-    out = model(tensor)
+    out = model(tensor, torch.ones(4, device=device, dtype=torch.long), "train")
     print(out.shape)
