@@ -17,12 +17,12 @@ from torch.cuda.amp import autocast, GradScaler
 from pathlib import Path
 
 
-save_path = Path("./exps/distill_test/")
+save_path = Path("./exps/distill_reduced_ecapa_128/")
 
-def train(num_epochs = 20, batch_size = 256, max_frames = 200):
+def train(num_epochs = 20, batch_size = 364, max_frames = 200):
     device = torch.device("cuda")
     teacher = HuCapa(device=device)
-    student = ECAPA_TDNN(512)
+    student = ECAPA_TDNN(128)
     student.to(device)
 
     checkpoint = torch.load("./exps/HuCapa/cyclic_sched_2/16-24/16-24_cp.tar")
@@ -30,7 +30,7 @@ def train(num_epochs = 20, batch_size = 256, max_frames = 200):
     teacher.hs_weights.load_state_dict(checkpoint["hs_weights"])
 
     train_dataset = train_dataset_loader(
-    train_list="data/train_list_debug.txt",
+    train_list="data/train_list.txt",
     augment=True,
     musan_path="./data/musan_split",
     rir_path="./data/RIRS_NOISES/simulated_rirs",
@@ -55,7 +55,7 @@ def train(num_epochs = 20, batch_size = 256, max_frames = 200):
         drop_last=True
     )
 
-    distillation_criterion = KnowledgeDistillationLossConfig(loss_types=["CE", "MSE"], loss_weights=[0.5, 0.5])
+    distillation_criterion = KnowledgeDistillationLossConfig(loss_types=["CE", "MSE"], loss_weights=[0, 1])
     conf = DistillationConfig(teacher_model=teacher, criterion=distillation_criterion, optimizer={"SGD": {"learning_rate": 0.0001}})
     compression_manager = prepare_compression(student, conf)
     compression_manager.callbacks.on_train_begin()

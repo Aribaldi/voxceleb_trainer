@@ -32,7 +32,7 @@ class EcapaTrainer(nn.Module):
     ) -> None:
         super().__init__()
         self.device = device
-        self.model = CustomEcapa(80)
+        self.model = ECAPA_TDNN(128)
         self.model.to(device)
         train_dataset = train_dataset_loader(
             train_list=train_list,
