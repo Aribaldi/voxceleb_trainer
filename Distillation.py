@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
 from loss.aamsoftmax import LossFunction as AAM
+from loss.amsoftmax import LossFunction as AM
 import sys
 from HuCapa_trainer import evaluateFromList
 from tuneThreshold import *
@@ -116,7 +117,11 @@ def main(args):
 
     optim = torch.optim.Adam(model.model.parameters(), lr=1e-3, weight_decay=2e-5)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=2, gamma=0.97)
-    loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
+
+    if args.student_model == "resnet":
+        loss = AM(nOut=192, nClasses=5994, margin=0.2, scale=30)
+    else:
+        loss = AAM(nOut=192, nClasses=5994, margin=0.2, scale=30)
     loss.to(device)
     scaler = GradScaler()
 
